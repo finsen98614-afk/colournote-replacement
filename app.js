@@ -387,11 +387,15 @@
 
     const dateVal = $("#dueDateInput").value;
     const timeVal = $("#dueTimeInput").value;
+    const prevDue = d.dueDate;
     if (dateVal) {
       d.dueDate = timeVal ? `${dateVal}T${timeVal}:00` : dateVal;
     } else {
       d.dueDate = "";
     }
+    // Re-arm the reminder whenever the due date moves, otherwise a note that
+    // already fired once stays silent forever at its new time.
+    if (d.dueDate !== prevDue) d.notifiedAt = null;
 
     if (isDraftEmpty()) {
       $("#editorOverlay").classList.remove("open");
@@ -527,22 +531,77 @@
     Notification.requestPermission().then(updateNotifStatus);
   }
 
-  function checkDueNotes() {
+  // A date-only due date ("YYYY-MM-DD") would otherwise fire at local midnight,
+  // so setting a note due today notifies instantly. Treat those as 09:00.
+  function reminderTime(note) {
+    if (!note.dueDate) return null;
+    const d = parseDueDate(note.dueDate);
+    if (note.dueDate.length <= 10) d.setHours(9, 0, 0, 0);
+    return d.getTime();
+  }
+
+  // Android Chrome forbids `new Notification()` outright ("Illegal constructor")
+  // and requires going through the service worker, so try that first. Returns
+  // whether a notification was actually shown — the caller must not mark a note
+  // as notified when this fails, or the reminder is silently lost forever.
+  async function showNotification(title, options) {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg && reg.showNotification) {
+        await reg.showNotification(title, options);
+        return true;
+      }
+    } catch (e) { /* fall through to the constructor */ }
+    try {
+      new Notification(title, options);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function checkDueNotes() {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     const now = Date.now();
+
+    const due = state.data.notes.filter(
+      (n) => n.dueDate && !n.notifiedAt && reminderTime(n) <= now
+    );
+    if (!due.length) return;
+
     let changed = false;
-    for (const note of state.data.notes) {
-      if (!note.dueDate) continue;
-      const dueTime = parseDueDate(note.dueDate).getTime();
-      if (dueTime <= now && !note.notifiedAt) {
-        try {
-          new Notification(note.title || "筆記提醒", { body: "已到期：" + (note.title || "無標題筆記") });
-        } catch (e) { /* ignore */ }
+
+    // Reminders missed while the app was closed all come due at once. Past a
+    // handful, collapse them into one notification instead of a burst.
+    if (due.length > 3) {
+      const ok = await showNotification("有 " + due.length + " 則筆記到期", {
+        body: due.slice(0, 3).map((n) => n.title || "無標題筆記").join("、") + " 等",
+        tag: "notes-due-digest",
+        icon: "icons/icon.svg",
+      });
+      if (ok) {
+        due.forEach((n) => { n.notifiedAt = now; });
+        changed = true;
+      }
+    } else {
+      for (const note of due) {
+        const ok = await showNotification(note.title || "筆記提醒", {
+          body: note.type === "checklist"
+            ? (note.items || []).filter((it) => !it.done).length + " 個項目未完成"
+            : (note.content || "").slice(0, 80) || "已到期",
+          tag: "note-" + note.id,
+          icon: "icons/icon.svg",
+          requireInteraction: true,
+          data: { noteId: note.id },
+        });
+        if (!ok) break;
         note.notifiedAt = now;
         changed = true;
       }
     }
+
     if (changed) saveData();
+    renderGrid();
   }
 
   // ---------- Wiring ----------
@@ -594,6 +653,16 @@
       $("#dueTimeInput").value = "";
     });
 
+    // Ask for permission when a reminder is actually set. Burying this in the
+    // settings sheet meant most reminders were armed while notifications were
+    // still un-granted, so nothing could ever fire.
+    $("#dueDateInput").addEventListener("change", () => {
+      if (!$("#dueDateInput").value) return;
+      if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission().then(updateNotifStatus);
+      }
+    });
+
     $("#settingsBtn").addEventListener("click", () => {
       renderManageFolders();
       updateNotifStatus();
@@ -618,7 +687,12 @@
     $("#editorOverlay").addEventListener("click", (e) => { if (e.target.id === "editorOverlay") closeEditor(); });
     $("#settingsOverlay").addEventListener("click", (e) => { if (e.target.id === "settingsOverlay") $("#settingsOverlay").classList.remove("open"); });
 
+    // The interval only ticks while the page is alive, so also sweep on return
+    // to catch reminders that came due while the app was closed.
     setInterval(checkDueNotes, 60000);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) checkDueNotes();
+    });
     checkDueNotes();
 
     if ("serviceWorker" in navigator) {

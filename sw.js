@@ -1,4 +1,4 @@
-const CACHE_NAME = "finsen-notes-v1";
+const CACHE_NAME = "finsen-notes-v2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -19,6 +19,19 @@ self.addEventListener("activate", (event) => {
     caches.keys().then((keys) =>
       Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
+  );
+});
+
+// Tapping a reminder should bring the app forward rather than do nothing.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ("focus" in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow("./index.html");
+    })
   );
 });
 
