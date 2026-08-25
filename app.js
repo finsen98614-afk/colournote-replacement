@@ -2,17 +2,18 @@
   "use strict";
 
   const STORAGE_KEY = "finsenNotesData";
+  // Must stay in step with the .c-* paper shades in styles.css.
   const COLORS = [
-    ["default", "#3a3d42"],
-    ["red", "#f7c1c8"],
-    ["orange", "#f8d3ae"],
-    ["yellow", "#f7e39b"],
-    ["green", "#bfe3c0"],
-    ["teal", "#b7e4dd"],
-    ["blue", "#bcd6f5"],
-    ["purple", "#d6c4ee"],
-    ["pink", "#f4c6e0"],
-    ["gray", "#d7d9dc"],
+    ["default", "#fffdf5"],
+    ["red", "#ffd9dd"],
+    ["orange", "#ffe3c4"],
+    ["yellow", "#f8e79b"],
+    ["green", "#cdebc7"],
+    ["teal", "#c3ebe4"],
+    ["blue", "#cbdff8"],
+    ["purple", "#ddcbf2"],
+    ["pink", "#f9d2e8"],
+    ["gray", "#e2e4e7"],
   ];
 
   function uid() {
@@ -288,18 +289,45 @@
       $("#dueTimeInput").value = "";
     }
     updatePinBtn();
+    applyNoteColor();
+    updateTimestamp();
+    closePops();
   }
 
   function updatePinBtn() {
-    $("#pinBtn").style.opacity = state.draft.pinned ? "1" : "0.4";
+    $("#pinBtn").classList.toggle("on", !!state.draft.pinned);
+  }
+
+  // Drives the whole editor chrome — paper, toolbar and swatch button all read
+  // from the .c-* class, so the note's colour only has to be set in one place.
+  function applyNoteColor() {
+    const sheet = $("#editorSheet");
+    sheet.className = "note-sheet c-" + (state.draft.color || "default");
+  }
+
+  function updateTimestamp() {
+    const d = state.draft;
+    const ts = d.updatedAt || d.createdAt || Date.now();
+    $("#noteTimestamp").textContent = new Date(ts).toLocaleString("zh-Hant-HK", {
+      year: "numeric", month: "numeric", day: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
+    $("#editingLabel").textContent = state.isNew ? "新筆記" : "Editing";
+  }
+
+  function closePops() {
+    $("#colorPop").classList.remove("open");
+    $("#menuPop").classList.remove("open");
   }
 
   function setType(type) {
     state.draft.type = type;
     $("#typeTextBtn").classList.toggle("active", type === "text");
     $("#typeChecklistBtn").classList.toggle("active", type === "checklist");
-    $("#textFieldWrap").style.display = type === "text" ? "block" : "none";
-    $("#checklistWrap").style.display = type === "checklist" ? "block" : "none";
+    // Must be flex, not block: the paper fills its height through the flex
+    // chain, and an inline `display: block` collapses it to two rows.
+    $("#textFieldWrap").style.display = type === "text" ? "flex" : "none";
+    $("#checklistWrap").style.display = type === "checklist" ? "flex" : "none";
   }
 
   function renderChecklistItems() {
@@ -312,13 +340,17 @@
       const cb = document.createElement("input");
       cb.type = "checkbox";
       cb.checked = !!item.done;
-      cb.addEventListener("change", () => { item.done = cb.checked; });
+      cb.addEventListener("change", () => {
+        item.done = cb.checked;
+        txt.classList.toggle("done", cb.checked);
+      });
       row.appendChild(cb);
 
       const txt = document.createElement("input");
       txt.type = "text";
       txt.value = item.text || "";
       txt.placeholder = "項目…";
+      if (item.done) txt.classList.add("done");
       txt.addEventListener("input", () => { item.text = txt.value; });
       row.appendChild(txt);
 
@@ -345,6 +377,8 @@
       sw.addEventListener("click", () => {
         state.draft.color = key;
         renderSwatches();
+        applyNoteColor();
+        $("#colorPop").classList.remove("open");
       });
       wrap.appendChild(sw);
     }
@@ -626,6 +660,25 @@
     $("#pinBtn").addEventListener("click", () => {
       state.draft.pinned = !state.draft.pinned;
       updatePinBtn();
+    });
+
+    $("#colorBtn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      const open = $("#colorPop").classList.contains("open");
+      closePops();
+      if (!open) $("#colorPop").classList.add("open");
+    });
+    $("#menuBtn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      const open = $("#menuPop").classList.contains("open");
+      closePops();
+      if (!open) $("#menuPop").classList.add("open");
+    });
+    // Tapping the paper dismisses whichever popover is open.
+    $("#editorSheet").addEventListener("click", (e) => {
+      if (!e.target.closest(".pop") && !e.target.closest("#colorBtn") && !e.target.closest("#menuBtn")) {
+        closePops();
+      }
     });
 
     $("#typeTextBtn").addEventListener("click", () => setType("text"));

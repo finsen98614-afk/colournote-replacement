@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1b1c1f">
+<meta name="theme-color" content="#f2efe6">
 <title>Finsen Notes</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
@@ -39,55 +39,81 @@
 
   <button class="fab" id="fabAdd" title="新增筆記">+</button>
 
-  <!-- Note editor -->
-  <div class="overlay" id="editorOverlay">
-    <div class="sheet">
-      <div class="sheet-header">
-        <button class="icon-btn" id="closeEditorBtn">←</button>
-        <div style="display:flex; gap:8px;">
-          <button class="icon-btn" id="pinBtn" title="釘選">📌</button>
-          <button class="icon-btn" id="deleteBtn" title="刪除">🗑</button>
+  <!-- Note editor: ColorNote-style full-screen ruled paper -->
+  <div class="overlay full" id="editorOverlay">
+    <div class="note-sheet c-default" id="editorSheet">
+
+      <div class="note-bar">
+        <button class="bar-btn" id="closeEditorBtn" title="儲存並返回">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path fill="currentColor" d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm-5 16a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm3-10H5V5h10v4z"/>
+          </svg>
+        </button>
+        <input class="bar-title" id="titleInput" type="text" placeholder="標題">
+        <button class="bar-swatch" id="colorBtn" title="顏色"></button>
+        <button class="bar-btn" id="menuBtn" title="更多">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <circle cx="12" cy="5" r="2" fill="currentColor"/>
+            <circle cx="12" cy="12" r="2" fill="currentColor"/>
+            <circle cx="12" cy="19" r="2" fill="currentColor"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="note-meta">
+        <span id="editingLabel">Editing</span>
+        <span id="noteTimestamp"></span>
+      </div>
+
+      <div class="note-body">
+        <div id="textFieldWrap" class="paper-wrap">
+          <textarea id="contentInput" class="paper" placeholder="內容…" spellcheck="false"></textarea>
         </div>
-      </div>
 
-      <input class="title-input" id="titleInput" type="text" placeholder="標題">
-
-      <div class="type-toggle">
-        <button id="typeTextBtn" data-type="text">純文字</button>
-        <button id="typeChecklistBtn" data-type="checklist">Checklist</button>
-      </div>
-
-      <div class="field" id="textFieldWrap">
-        <textarea id="contentInput" placeholder="內容…"></textarea>
-      </div>
-
-      <div id="checklistWrap" style="display:none">
-        <div class="checklist-items" id="checklistItems"></div>
-        <button class="add-item-btn" id="addItemBtn">+ 新增項目</button>
-      </div>
-
-      <div class="field">
-        <label>顏色</label>
-        <div class="swatches" id="swatches"></div>
-      </div>
-
-      <div class="row-2 field">
-        <div>
-          <label>資料夾</label>
-          <select id="folderSelect"></select>
-        </div>
-        <div>
-          <label>到期日 / 提醒</label>
-          <div class="due-row">
-            <input type="date" id="dueDateInput">
-            <input type="time" id="dueTimeInput">
+        <div id="checklistWrap" class="paper-wrap" style="display:none">
+          <div class="paper checklist-paper">
+            <div class="checklist-items" id="checklistItems"></div>
+            <button class="add-item-btn" id="addItemBtn">＋ 新增項目</button>
           </div>
         </div>
       </div>
 
-      <div class="sheet-actions">
-        <button class="btn danger" id="clearDueBtn">清除到期日</button>
+      <!-- colour picker popover -->
+      <div class="pop color-pop" id="colorPop">
+        <div class="swatches" id="swatches"></div>
       </div>
+
+      <!-- overflow menu popover -->
+      <div class="pop menu-pop" id="menuPop">
+        <div class="menu-section">
+          <div class="menu-label">格式</div>
+          <div class="type-toggle">
+            <button id="typeTextBtn" data-type="text">純文字</button>
+            <button id="typeChecklistBtn" data-type="checklist">Checklist</button>
+          </div>
+        </div>
+
+        <button class="menu-item" id="pinBtn">
+          <span>釘選喺最上</span><span class="menu-check" id="pinCheck">✓</span>
+        </button>
+
+        <div class="menu-section">
+          <div class="menu-label">資料夾</div>
+          <select id="folderSelect"></select>
+        </div>
+
+        <div class="menu-section">
+          <div class="menu-label">到期日 / 提醒</div>
+          <div class="due-row">
+            <input type="date" id="dueDateInput">
+            <input type="time" id="dueTimeInput">
+          </div>
+          <button class="menu-mini" id="clearDueBtn">清除到期日</button>
+        </div>
+
+        <button class="menu-item danger" id="deleteBtn">刪除呢則筆記</button>
+      </div>
+
     </div>
   </div>
 
@@ -101,14 +127,14 @@
 
       <div class="settings-section">
         <h4>提醒通知</h4>
-        <p class="hint">開啟後，App 喺前台或背景短暫執行時，去到到期時間會嘗試發出通知。手機背景執行有限制（尤其 iOS），到期／逾期筆記一律會用顏色標記，唔靠通知都睇到。</p>
+        <p class="hint">App 開住嗰陣到期會出通知；閂咗之後再開會補發錯過嘅提醒。App 一直冇開就唔會響（網頁 App 嘅平台限制）。逾期／今日到期一律有顏色標記，唔靠通知都睇到。</p>
         <button class="btn" id="enableNotifBtn">啟用通知</button>
         <span id="notifStatus" style="margin-left:8px; font-size:12.5px; color:var(--text-dim)"></span>
       </div>
 
       <div class="settings-section">
         <h4>備份</h4>
-        <p class="hint">匯出所有筆記同資料夾做一個 JSON 檔，可以存喺手機任何資料夾（例如 Downloads），或轉存去雲端硬碟自己保存。</p>
+        <p class="hint">匯出所有筆記同資料夾做一個 JSON 檔，可以存喺手機任何資料夾，或轉存去雲端硬碟自己保存。</p>
         <button class="btn primary" id="backupBtn">備份（匯出 JSON）</button>
       </div>
 
@@ -122,7 +148,7 @@
       <div class="settings-section">
         <h4>資料夾管理</h4>
         <div class="chips" id="manageFolderChips"></div>
-        <button class="btn" id="addFolderBtn" style="margin-top:8px;">+ 新增資料夾</button>
+        <button class="btn" id="addFolderBtn" style="margin-top:8px;">＋ 新增資料夾</button>
       </div>
 
       <div class="settings-section">
