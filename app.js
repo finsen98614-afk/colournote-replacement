@@ -208,9 +208,19 @@
         card.appendChild(more);
       }
     } else if (note.content) {
-      const p = document.createElement("p");
-      p.textContent = note.content.length > 220 ? note.content.slice(0, 220) + "…" : note.content;
-      card.appendChild(p);
+      // The first line is usually the title, so drop it from the preview
+      // instead of showing the same text twice on the card.
+      let preview = note.content;
+      if (note.title && deriveTitle(note.content) === note.title.trim()) {
+        preview = preview.slice(preview.indexOf("\n") + 1);
+        if (preview === note.content) preview = "";
+      }
+      preview = preview.replace(/^\n+/, "");
+      if (preview.trim()) {
+        const p = document.createElement("p");
+        p.textContent = preview.length > 220 ? preview.slice(0, 220) + "…" : preview;
+        card.appendChild(p);
+      }
     }
 
     const metaRow = document.createElement("div");
@@ -240,6 +250,19 @@
   }
 
   // ---------- Editor ----------
+  // ColorNote names a note by its first line. That auto-fill applies only to a
+  // note whose title is blank: any existing title is the user's own and is
+  // never rewritten, even when it happens to match the first line already.
+  function deriveTitle(content) {
+    return (content || "").split("\n")[0].trim().slice(0, 100);
+  }
+
+  // Decided once when the editor opens, not re-derived per keystroke — the
+  // title stops being blank as soon as the first character is auto-filled.
+  function titleIsTracking(note) {
+    return !(note.title || "").trim();
+  }
+
   function blankNote() {
     return {
       id: uid(),
@@ -288,6 +311,7 @@
       $("#dueDateInput").value = "";
       $("#dueTimeInput").value = "";
     }
+    state.titleTracking = titleIsTracking(d);
     updatePinBtn();
     applyNoteColor();
     updateTimestamp();
@@ -679,6 +703,20 @@
       if (!e.target.closest(".pop") && !e.target.closest("#colorBtn") && !e.target.closest("#menuBtn")) {
         closePops();
       }
+    });
+
+    // First line drives the title until the title is edited by hand.
+    $("#contentInput").addEventListener("input", () => {
+      if (!state.draft || state.draft.type !== "text") return;
+      if (!state.titleTracking) return;
+      $("#titleInput").value = deriveTitle($("#contentInput").value);
+    });
+
+    $("#titleInput").addEventListener("input", () => {
+      if (!state.draft) return;
+      const t = $("#titleInput").value.trim();
+      // Typing a title by hand takes over; clearing it hands control back.
+      state.titleTracking = !t || t === deriveTitle($("#contentInput").value);
     });
 
     $("#typeTextBtn").addEventListener("click", () => setType("text"));
