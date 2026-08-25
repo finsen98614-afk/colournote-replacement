@@ -1,4 +1,4 @@
-const CACHE_NAME = "finsen-notes-v5";
+const CACHE_NAME = "finsen-notes-v6";
 const ASSETS = [
   "./",
   "./index.html",

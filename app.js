@@ -296,6 +296,7 @@
     state.editingId = state.draft.id;
     fillEditorForm();
     $("#editorOverlay").classList.add("open");
+    pushOverlayState("editor");
   }
 
   function fillEditorForm() {
@@ -466,6 +467,39 @@
     return JSON.stringify(state.draft) !== state.originalSnapshot;
   }
 
+  // ---------- Hardware back button ----------
+  // Opening an overlay is not a navigation, so without a history entry Android's
+  // back button leaves the app entirely instead of closing the overlay. Push one
+  // entry per overlay and unwind it again on every button-driven close, or the
+  // stack fills with stale entries and back appears to do nothing.
+  function pushOverlayState(name) {
+    history.pushState({ overlay: name }, "");
+  }
+
+  function unwindOverlayState() {
+    if (history.state && history.state.overlay) history.back();
+  }
+
+  function handleBack() {
+    // Innermost layer first. A popover swallows the press, and its entry is
+    // re-pushed so the next back still has one to close the editor with.
+    if ($("#colorPop").classList.contains("open") || $("#menuPop").classList.contains("open")) {
+      closePops();
+      pushOverlayState("editor");
+      return;
+    }
+    if ($("#editorOverlay").classList.contains("open")) {
+      // Back saves, matching ColorNote and the save button. Discarding is the
+      // deliberate action, and it lives in the menu.
+      commitEditor();
+      exitEditor();
+      return;
+    }
+    if ($("#settingsOverlay").classList.contains("open")) {
+      $("#settingsOverlay").classList.remove("open");
+    }
+  }
+
   function exitEditor() {
     closePops();
     $("#editorOverlay").classList.remove("open");
@@ -483,23 +517,27 @@
       if (!confirm(msg)) return;
     }
     exitEditor();
+    unwindOverlayState();
   }
 
-  function closeEditor() {
+  // Persisting is split from the UI teardown because the hardware back button
+  // has already consumed its history entry by the time it runs, so it must save
+  // and close without unwinding a second one.
+  function commitEditor() {
     const d = collectDraft();
-
-    if (isDraftEmpty()) {
-      exitEditor();
-      return;
-    }
+    if (isDraftEmpty()) return;
 
     d.updatedAt = Date.now();
     const idx = state.data.notes.findIndex((n) => n.id === d.id);
     if (idx >= 0) state.data.notes[idx] = d;
     else state.data.notes.push(d);
-
     saveData();
+  }
+
+  function closeEditor() {
+    commitEditor();
     exitEditor();
+    unwindOverlayState();
   }
 
   function deleteCurrentNote() {
@@ -507,10 +545,8 @@
     if (!confirm("刪除呢則筆記？")) return;
     state.data.notes = state.data.notes.filter((n) => n.id !== state.draft.id);
     saveData();
-    $("#editorOverlay").classList.remove("open");
-    state.editingId = null;
-    state.draft = null;
-    render();
+    exitEditor();
+    unwindOverlayState();
   }
 
   // ---------- Folders ----------
@@ -786,8 +822,12 @@
       renderManageFolders();
       updateNotifStatus();
       $("#settingsOverlay").classList.add("open");
+      pushOverlayState("settings");
     });
-    $("#closeSettingsBtn").addEventListener("click", () => $("#settingsOverlay").classList.remove("open"));
+    $("#closeSettingsBtn").addEventListener("click", () => {
+      $("#settingsOverlay").classList.remove("open");
+      unwindOverlayState();
+    });
 
     $("#enableNotifBtn").addEventListener("click", enableNotifications);
     $("#backupBtn").addEventListener("click", backupData);
@@ -804,7 +844,14 @@
 
     // close overlays by tapping backdrop
     $("#editorOverlay").addEventListener("click", (e) => { if (e.target.id === "editorOverlay") closeEditor(); });
-    $("#settingsOverlay").addEventListener("click", (e) => { if (e.target.id === "settingsOverlay") $("#settingsOverlay").classList.remove("open"); });
+    $("#settingsOverlay").addEventListener("click", (e) => {
+      if (e.target.id === "settingsOverlay") {
+        $("#settingsOverlay").classList.remove("open");
+        unwindOverlayState();
+      }
+    });
+
+    window.addEventListener("popstate", handleBack);
 
     // The interval only ticks while the page is alive, so also sweep on return
     // to catch reminders that came due while the app was closed.
