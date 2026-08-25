@@ -285,9 +285,13 @@
       const note = state.data.notes.find((n) => n.id === noteId);
       state.draft = JSON.parse(JSON.stringify(note));
       state.isNew = false;
+      // Baseline for the unsaved-changes check on cancel. Taken from the copy
+      // so key order matches and only real edits register as a difference.
+      state.originalSnapshot = JSON.stringify(state.draft);
     } else {
       state.draft = blankNote();
       state.isNew = true;
+      state.originalSnapshot = null;
     }
     state.editingId = state.draft.id;
     fillEditorForm();
@@ -435,7 +439,10 @@
     return true;
   }
 
-  function closeEditor() {
+  // Reads the form into the draft. The draft is a deep copy of the stored note,
+  // so nothing reaches storage until closeEditor writes it back — that is what
+  // lets cancelling simply walk away instead of having to undo anything.
+  function collectDraft() {
     const d = state.draft;
     d.title = $("#titleInput").value.trim();
     d.content = $("#contentInput").value;
@@ -446,20 +453,43 @@
     const dateVal = $("#dueDateInput").value;
     const timeVal = $("#dueTimeInput").value;
     const prevDue = d.dueDate;
-    if (dateVal) {
-      d.dueDate = timeVal ? `${dateVal}T${timeVal}:00` : dateVal;
-    } else {
-      d.dueDate = "";
-    }
+    d.dueDate = dateVal ? (timeVal ? `${dateVal}T${timeVal}:00` : dateVal) : "";
     // Re-arm the reminder whenever the due date moves, otherwise a note that
     // already fired once stays silent forever at its new time.
     if (d.dueDate !== prevDue) d.notifiedAt = null;
+    return d;
+  }
+
+  function isDirty() {
+    collectDraft();
+    if (state.isNew) return !isDraftEmpty();
+    return JSON.stringify(state.draft) !== state.originalSnapshot;
+  }
+
+  function exitEditor() {
+    closePops();
+    $("#editorOverlay").classList.remove("open");
+    state.editingId = null;
+    state.draft = null;
+    state.originalSnapshot = null;
+    render();
+  }
+
+  function cancelEditor() {
+    if (isDirty()) {
+      const msg = state.isNew
+        ? "放棄呢則新筆記？"
+        : "放棄未儲存嘅修改，還原返上一次儲存嘅版本？";
+      if (!confirm(msg)) return;
+    }
+    exitEditor();
+  }
+
+  function closeEditor() {
+    const d = collectDraft();
 
     if (isDraftEmpty()) {
-      $("#editorOverlay").classList.remove("open");
-      state.editingId = null;
-      state.draft = null;
-      render();
+      exitEditor();
       return;
     }
 
@@ -469,10 +499,7 @@
     else state.data.notes.push(d);
 
     saveData();
-    $("#editorOverlay").classList.remove("open");
-    state.editingId = null;
-    state.draft = null;
-    render();
+    exitEditor();
   }
 
   function deleteCurrentNote() {
@@ -680,6 +707,7 @@
 
     $("#fabAdd").addEventListener("click", () => openEditor(null));
     $("#closeEditorBtn").addEventListener("click", closeEditor);
+    $("#cancelBtn").addEventListener("click", cancelEditor);
     $("#deleteBtn").addEventListener("click", deleteCurrentNote);
     $("#pinBtn").addEventListener("click", () => {
       state.draft.pinned = !state.draft.pinned;
