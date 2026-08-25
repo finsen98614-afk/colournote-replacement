@@ -1,0 +1,19 @@
+{
+  "name": "Finsen Notes",
+  "short_name": "Notes",
+  "description": "彩色筆記 + Checklist，離線本機儲存",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#1b1c1f",
+  "theme_color": "#1b1c1f",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

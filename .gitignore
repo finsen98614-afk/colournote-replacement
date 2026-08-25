@@ -1,0 +1,16 @@
+# 個人筆記資料 — 絕對唔好上傳
+migration/imported-notes.json
+migration/*.backup
+migration/*.dat
+migration/notes-*.json
+migration/*.txt
+
+# 第三方 binary（需要時自行落載，見 migration/README.md）
+migration/*.jar
+migration/lib/
+migration/bin/
+
+# 系統檔案
+.DS_Store
+Thumbs.db
+desktop.ini
